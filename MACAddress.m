@@ -16,7 +16,8 @@ function mac = MACAddress(allMac)
 %  num = uint8(sscanf(MACAddress, '%2x%*c', 6))';
 
 % 170510 Adapted this from RTBox code (Xiangrui.Li at gmail.com).
-% 170525 Include mex64 for MS Windows.
+% 170525 Include mex for MS Windows.
+% 171030 mex.c more robust. Include Octave 4 mex.
 
 if nargin<1 || isempty(allMac), allMac = false; end % default to first MAC
 
