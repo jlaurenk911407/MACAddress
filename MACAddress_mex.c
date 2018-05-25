@@ -19,8 +19,8 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     const char fmt[] = "%02X-%02X-%02X-%02X-%02X-%02X"; // Windows style
     //const char fmt[] = "%02x:%02x:%02x:%02x:%02x:%02x"; // Unix style
     unsigned char m[7];
-    char ch18[18], i=0;
-    mwSize nNICs = 1;
+    char ch18[18];
+    mwSize i, nNICs;
     DWORD bufLen = sizeof(IP_ADAPTER_INFO);
     PIP_ADAPTER_INFO pAdapter = (IP_ADAPTER_INFO *) mxMalloc(bufLen);    
     BOOL allMAC = FALSE;    
@@ -38,7 +38,7 @@ void mexFunction( int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         memcpy(m, pAdapter->Address, 6);
         sprintf(ch18, fmt, m[0], m[1], m[2], m[3], m[4], m[5]); 
         if (allMAC) mxSetCell(plhs[0], i, mxCreateString(ch18));
-        else {plhs[0] = mxCreateString(ch18); break;}
+        else {plhs[0] = mxCreateString(ch18); break;} // done for single mac
 		pAdapter = pAdapter->Next;
 	}
     if (pAdapter) mxFree(pAdapter);
