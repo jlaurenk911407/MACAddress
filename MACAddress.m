@@ -18,6 +18,7 @@ function mac = MACAddress(allMac)
 % 170510 Adapted this from RTBox code (Xiangrui.Li at gmail.com).
 % 170525 Include mex for MS Windows.
 % 171030 mex.c more robust. Include Octave 4 mex.
+% 180525 use jsystem('ipconfig') for Windows; java method moved behind.
 
 if nargin<1 || isempty(allMac), allMac = false; end % default to first MAC
 
@@ -37,7 +38,7 @@ if ~allMac
         if ~isempty(mac) && sum(mac=='0')<12, return; end
     end
     if exist('/sys/class/net/eth0/address', 'file') % linux
-        [~, mac] = system('cat /sys/class/net/eth0/address');
+        mac = strtrim(fileread('/sys/class/net/eth0/address'));
         if ~isempty(mac) && sum(mac=='0')<12, return; end
     end
 %     try % python uuid.getnode is fast, but 1st py.* call is slow
@@ -48,7 +49,27 @@ if ~allMac
 %     end
 end
 
-try % java approach is faster than system command, and is OS independent
+try % system command works always, although can be slow
+    if ispc
+        [err, str] = jsystem({'ipconfig.exe' '/all'});
+        % [err, str] = system('getmac.exe'); % too slow
+        expr = '(?<=\s)([0-9A-F]{2}-){5}[0-9A-F]{2}(?=\s)'; % separator -
+    else
+        [err, str] = system('ifconfig');
+        if err, [err, str] = system('/sbin/ifconfig'); end
+        expr = '(?<=\s)([0-9a-f]{2}:){5}[0-9a-f]{2}(?=\s)'; % separator :
+    end
+    if err, error(str); end % unlikely to happen
+    if allMac, mac = regexp(str, expr, 'match');
+    else,      mac = regexp(str, expr, 'match', 'once');
+    end
+    if ~isempty(mac), return; end
+end
+
+% java method is OS-independent, but may get only 1 mac for Linux. 
+% It is faster than Windows getmac.exe, but slower than jsystem({'ipconfig'}).
+% It can be abandoned, but just leave here in case useful.
+try
     if allMac, mac = {}; end
     ni = java.net.NetworkInterface.getNetworkInterfaces;
     while ni.hasMoreElements
@@ -63,24 +84,27 @@ try % java approach is faster than system command, and is OS independent
     if ~isempty(mac), return; end
 end
 
-try % system command is slow, use as last resort
-    if ispc
-        [err, str] = system('getmac.exe');
-        expr = '(?<=\s)([0-9A-F]{2}-){5}[0-9A-F]{2}(?=\s)'; % separator -
-    else
-        [err, str] = system('ifconfig');
-        expr = '(?<=\s)([0-9a-f]{2}:){5}[0-9a-f]{2}(?=\s)'; % separator :
-    end
-    if err, error(str); end % unlikely to happen
-    if allMac, mac = regexp(str, expr, 'match');
-    else,      mac = regexp(str, expr, 'match', 'once');
-    end
-    if ~isempty(mac), return; end
-end
-
 % If all attemps fail, give warning, and return a random MAC
 warning('MACAddress:RandomMAC', 'Returned MAC are random numbers');
 a = randi(255, [1 6], 'uint8');
 a(5) = bitset(a(5), 1); % set 8th bit for random MAC, likely meaningless
 mac = sprintf(fmt, a);
 if allMac, mac = {mac}; end
+
+%% faster than system: based on https://github.com/avivrosenberg/matlab-jsystem
+function [err, out] = jsystem(cmd)
+% cmd is cell str, no quote needed for file names with space.
+try
+    pb = java.lang.ProcessBuilder(cmd);
+    pb.redirectErrorStream(true); % ErrorStream to InputStream
+    process = pb.start();
+    scanner = java.util.Scanner(process.getInputStream).useDelimiter('\A');
+    if scanner.hasNext(), out = char(scanner.next()); else, out = ''; end
+    %err = process.waitFor();
+    err = process.exitValue; % waitFor may hang. Error if not exited
+    if err, error(out); end
+catch % fallback to system if error
+    ind = find(cellfun(@(x)~isempty(strfind(x, ' ')), cmd)); %#ok
+    for i = ind, cmd{i} = ['"' cmd{i} '"']; end % add quotes to name with space
+    [err, out] = system(sprintf('%s ', cmd{:}));
+end
